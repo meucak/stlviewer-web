@@ -1,175 +1,386 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
-  <title>faset — Hardware STL Viewer</title>
+  <meta name="theme-color" content="#0F131B" />
+  <meta name="description" content="Anında erişilebilir, sıfır bağımlılıklı, çevrimdışı çalışan 3D STL görüntüleyici ve baskı analiz stüdyosu." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>STLViewer Web — Anında 3D STL Görüntüleyici</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="theme-dark">
-  <canvas id="gl-canvas" aria-label="3D STL Viewport"></canvas>
+  <main class="viewport-stage">
+    <h1 id="sr-heading" class="sr-only">STLViewer Web 3D STL Görüntüleyici</h1>
+    <canvas id="gl-canvas" aria-label="3D STL Viewport"></canvas>
+  </main>
 
   <div id="hud-layer">
-    <!-- Top-left: Model selector + Geometry Telemetry Pill -->
-    <div class="pill-wrap top-left">
-      <div id="info-pill" class="glass-pill info-pill">
-        <button id="btn-model-menu" class="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false" title="Switch demo or loaded STL ([ / ])">
-          <img src="./favicon.svg" alt="" class="brand-mark" width="16" height="16" />
-          <span id="info-name" class="info-name">flange-housing.stl</span>
-          <svg class="chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-            <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <span class="sep" aria-hidden="true"></span>
-        <span id="info-metrics" class="info-metrics mono">Loading…</span>
-      </div>
-
-      <div id="model-popover" class="glass-popover model-popover hidden" role="listbox" aria-label="STL Models">
-        <div class="pop-section-label">Built-in CAD Samples</div>
-        <div id="demo-list" class="pop-list"></div>
-        <div id="loaded-section" class="hidden">
-          <div class="pop-divider"></div>
-          <div class="pop-section-label">Loaded Files</div>
-          <div id="loaded-list" class="pop-list"></div>
+    <!-- Top Floating Bar -->
+    <header class="hud-top" aria-label="Model ve Durum Çubuğu">
+      <div class="pill-wrap top-left">
+        <div id="info-pill" class="glass-pill info-pill">
+          <button id="btn-model-menu" class="model-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-popover" title="Modeller, Arşiv ve Hızlı Aç ([ / ])">
+            <img src="./favicon.svg" alt="" class="brand-mark" width="18" height="18" />
+            <span id="info-name" class="info-name">flange-housing.stl</span>
+            <svg class="chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span class="sep info-sep" aria-hidden="true"></span>
+          <span id="info-metrics" class="info-metrics mono">Yükleniyor…</span>
         </div>
-        <div class="pop-divider"></div>
-        <button id="btn-pop-open" class="pop-item pop-action" type="button">Open local .stl file… <kbd>O</kbd></button>
-      </div>
-    </div>
 
-    <!-- Top-right: Power Mode & Zero-Idle Render Status -->
-    <div class="pill-wrap top-right">
-      <div id="status-pill" class="glass-pill status-pill">
-        <span id="idle-dot" class="idle-dot" aria-hidden="true"></span>
-        <span id="status-text" class="mono">Ready</span>
-        <span class="sep" aria-hidden="true"></span>
-        <button id="btn-eco" class="chip-btn" type="button" aria-pressed="false" title="Toggle Eco / Crisp render mode (E)">Eco</button>
+        <!-- Model Hub Popover -->
+        <div id="model-popover" class="glass-popover model-popover hidden" role="dialog" aria-label="Model Merkezi">
+          <div class="pop-section-label" data-i18n="secQuickActions">Hızlı Aç</div>
+          <div class="pop-action-grid">
+            <button id="btn-pop-open" class="pop-action-card" type="button">
+              <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 014.5 5h3.38a1.5 1.5 0 011.06.44l1.12 1.12a1.5 1.5 0 001.06.44H15.5A1.5 1.5 0 0117 8.5v6A1.5 1.5 0 0115.5 16h-11A1.5 1.5 0 013 14.5v-8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              <span data-i18n="openFile">Yerel .stl / .zip dosyası aç…</span>
+              <kbd>O</kbd>
+            </button>
+            <button id="btn-pop-url" class="pop-action-card" type="button">
+              <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M8.5 11.5l3-3m-4.24 5.66l-1.42 1.42a3 3 0 01-4.24-4.24l1.42-1.42m7.07-7.07l1.42-1.42a3 3 0 014.24 4.24l-1.42 1.42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <span data-i18n="openUrl">URL ile STL aç…</span>
+              <kbd>L</kbd>
+            </button>
+          </div>
+
+          <div id="kasa-lib-section" class="hidden">
+            <div class="pop-divider"></div>
+            <div class="pop-section-head">
+              <span class="pop-section-label" data-i18n="secKasaLibrary">Kasa STL Arşivi</span>
+              <span id="kasa-lib-count" class="pop-badge mono">0</span>
+            </div>
+            <input id="lib-search" class="text-input lib-search hidden" type="search" placeholder="Model ara…" aria-label="Arşivde model ara" />
+            <div id="kasa-lib-list" class="pop-list pop-scroll"></div>
+          </div>
+
+          <div id="loaded-section" class="hidden">
+            <div class="pop-divider"></div>
+            <div class="pop-section-label" data-i18n="secLoaded">Yüklü Dosyalar</div>
+            <div id="loaded-list" class="pop-list pop-scroll"></div>
+          </div>
+
+          <div id="recent-section" class="hidden">
+            <div class="pop-divider"></div>
+            <div class="pop-section-head">
+              <span class="pop-section-label" data-i18n="secRecent">Son Açılanlar</span>
+              <button id="btn-clear-recents" class="link-mini" type="button" data-i18n="clearRecents">Geçmişi Temizle</button>
+            </div>
+            <div id="recent-list" class="pop-list pop-scroll"></div>
+          </div>
+
+          <div class="pop-divider"></div>
+          <div class="pop-section-label" data-i18n="secSamples">Yerleşik CAD Örnekleri</div>
+          <div id="demo-list" class="pop-list"></div>
+        </div>
       </div>
-    </div>
+
+      <!-- Top-right: Share/QR, Inspector, Power Status, Lang, Install -->
+      <div class="pill-wrap top-right">
+        <div id="status-pill" class="glass-pill status-pill">
+          <div class="status-cluster">
+            <span id="idle-dot" class="idle-dot" aria-hidden="true"></span>
+            <span id="status-text" class="mono status-text">Hazır</span>
+          </div>
+          <span class="sep status-sep" aria-hidden="true"></span>
+          <button id="btn-share" class="chip-btn chip-accent" type="button" title="Anında Erişim, QR Kod ve Paylaşım (K)">
+            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v-2h-2v2zm2-4h2v2h-2v-2z" fill="currentColor"/></svg>
+            <span data-i18n="share">Paylaş</span>
+          </button>
+          <button id="btn-inspect" class="chip-btn" type="button" aria-pressed="false" aria-controls="inspector-drawer" title="Model ve 3D Baskı Analizi (N)">
+            <span data-i18n="inspect">İncele</span>
+          </button>
+          <button id="btn-eco" class="chip-btn chip-eco desktop-only" type="button" aria-pressed="false" title="Eco / Crisp Güç Modu (E)">Eco</button>
+          <button id="btn-lang" class="chip-btn lang-btn" type="button" title="Dil Değiştir (TR / EN)">TR</button>
+          <button id="btn-install" class="chip-btn chip-install hidden" type="button" data-i18n="installApp">Uygulamayı Kur</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Collapsible Right Inspector Drawer (Desktop right / Mobile bottom sheet) -->
+    <aside id="inspector-drawer" class="glass-popover inspector-drawer hidden" aria-label="Model ve 3D Baskı Analizi">
+      <div class="drawer-head">
+        <h2 class="drawer-title" data-i18n="inspectorTitle">Model &amp; 3D Baskı Analizi</h2>
+        <button id="btn-inspector-close" class="chip-btn" type="button" data-i18n="close">Kapat</button>
+      </div>
+
+      <div class="drawer-body">
+        <section class="insp-section">
+          <div class="insp-row-head">
+            <span class="insp-label" data-i18n="inspDimensions">Boyutlar</span>
+            <div class="seg-group" role="group" aria-label="Ölçü Birimi">
+              <button class="seg-btn unit-btn active" type="button" data-unit="mm">mm</button>
+              <button class="seg-btn unit-btn" type="button" data-unit="cm">cm</button>
+              <button class="seg-btn unit-btn" type="button" data-unit="in">in</button>
+            </div>
+          </div>
+          <div class="dim-grid mono">
+            <div class="dim-cell"><span class="axis-x">X</span><strong id="insp-x">—</strong></div>
+            <div class="dim-cell"><span class="axis-y">Y</span><strong id="insp-y">—</strong></div>
+            <div class="dim-cell"><span class="axis-z">Z</span><strong id="insp-z">—</strong></div>
+          </div>
+          <dl class="kv-list">
+            <div><dt data-i18n="inspVolume">Hacim</dt><dd id="insp-vol" class="mono">—</dd></div>
+            <div><dt data-i18n="inspArea">Yüzey Alanı</dt><dd id="insp-area" class="mono">—</dd></div>
+            <div><dt data-i18n="inspTriangles">Üçgen</dt><dd id="insp-tris" class="mono">—</dd></div>
+            <div><dt data-i18n="inspFormat">Biçim</dt><dd id="insp-fmt" class="mono">—</dd></div>
+            <div><dt data-i18n="inspHealth">Mesh Sağlığı</dt><dd id="insp-health">—</dd></div>
+          </dl>
+        </section>
+
+        <div class="pop-divider"></div>
+
+        <section class="insp-section">
+          <h3 class="insp-subtitle" data-i18n="inspPrintTitle">3D Baskı Tahmini</h3>
+          <div class="form-row">
+            <label for="sel-material" data-i18n="inspMaterial">Malzeme</label>
+            <select id="sel-material" class="select-ctrl"></select>
+          </div>
+          <div class="form-row">
+            <label for="infill-slider"><span data-i18n="inspInfill">Doluluk</span> <span id="lbl-infill" class="mono">20%</span></label>
+            <input id="infill-slider" class="slice-slider full-slider" type="range" min="10" max="100" step="5" value="20" />
+          </div>
+          <dl class="kv-list">
+            <div><dt data-i18n="inspWeight">Tahmini Ağırlık</dt><dd id="insp-weight" class="mono">—</dd></div>
+            <div><dt data-i18n="inspFilament">Filament</dt><dd id="insp-filament" class="mono">—</dd></div>
+          </dl>
+          <div class="form-row">
+            <label for="sel-plate" data-i18n="inspPlate">Tabla Sığma</label>
+            <select id="sel-plate" class="select-ctrl"></select>
+          </div>
+          <div class="plate-row">
+            <span id="insp-plate-status" class="plate-badge">—</span>
+            <button id="btn-bed-toggle" class="chip-btn" type="button" aria-pressed="false" data-i18n="buildPlate">Baskı Tablası</button>
+          </div>
+        </section>
+
+        <div class="pop-divider"></div>
+
+        <section class="insp-section">
+          <h3 class="insp-subtitle" data-i18n="inspToolsTitle">Görünüm &amp; Araçlar</h3>
+          <div class="tool-grid-2">
+            <button id="btn-overhang-drawer" class="chip-btn" type="button" aria-pressed="false"><span data-i18n="overhang">Destek</span> (A)</button>
+            <button id="btn-turntable" class="chip-btn" type="button" aria-pressed="false"><span data-i18n="turntable">Döndür</span> (V)</button>
+            <button id="btn-snapshot" class="chip-btn" type="button"><span data-i18n="snapshot">PNG Kaydet</span> (C)</button>
+            <button id="btn-download-stl" class="chip-btn" type="button" data-i18n="downloadStl">STL İndir</button>
+          </div>
+        </section>
+      </div>
+    </aside>
 
     <!-- Bottom-center: Contextual Sub-Pills + Main Floating Toolbar -->
-    <div class="bottom-dock">
+    <nav class="bottom-dock" aria-label="3D Görüntüleyici Kontrolleri">
+      <!-- Overhang Legend Sub-Pill -->
+      <div id="overhang-pill" class="glass-pill sub-pill hidden" role="status">
+        <span class="overhang-swatch" aria-hidden="true"></span>
+        <span data-i18n="overhangNotice">45°+ sarkmalar mercan rengiyle vurgulanır</span>
+      </div>
+
       <!-- Measure Sub-Pill -->
-      <div id="measure-pill" class="glass-pill sub-pill hidden" role="region" aria-label="3D Measurement">
-        <span id="measure-text" class="mono">Click surface for Point A</span>
-        <button id="btn-measure-clear" class="chip-btn" type="button">Clear</button>
+      <div id="measure-pill" class="glass-pill sub-pill hidden" role="region" aria-label="3D Ölçüm">
+        <span id="measure-text" class="mono">A noktası için yüzeye dokunun</span>
+        <button id="btn-measure-copy" class="chip-btn hidden" type="button" data-i18n="copy">Kopyala</button>
+        <button id="btn-measure-clear" class="chip-btn" type="button" data-i18n="clear">Temizle</button>
       </div>
 
       <!-- Slice Sub-Pill -->
-      <div id="slice-pill" class="glass-pill sub-pill hidden" role="region" aria-label="Cross-section Slice">
-        <div class="seg-group" role="group" aria-label="Slice Axis">
+      <div id="slice-pill" class="glass-pill sub-pill hidden" role="region" aria-label="Kesit Düzlemi">
+        <div class="seg-group" role="group" aria-label="Kesit Ekseni">
           <button id="btn-slice-x" class="seg-btn" type="button" data-axis="0">X</button>
           <button id="btn-slice-y" class="seg-btn" type="button" data-axis="1">Y</button>
           <button id="btn-slice-z" class="seg-btn active" type="button" data-axis="2">Z</button>
         </div>
-        <button id="btn-slice-flip" class="chip-btn" type="button" aria-pressed="false" title="Flip clip side (I)">Flip</button>
-        <input id="slice-slider" class="slice-slider" type="range" min="0" max="1" step="0.002" value="0.5" aria-label="Slice position" />
+        <button id="btn-slice-flip" class="chip-btn" type="button" aria-pressed="false" title="Kesit yönünü çevir (I)" data-i18n="flip">Çevir</button>
+        <input id="slice-slider" class="slice-slider" type="range" min="0" max="1" step="0.002" value="0.5" aria-label="Kesit konumu" />
         <span id="slice-mm" class="mono slice-mm">0.0 mm</span>
       </div>
 
       <!-- Main Toolbar -->
-      <div id="toolbar-pill" class="glass-pill toolbar-pill" role="toolbar" aria-label="Viewer Controls">
-        <button id="btn-open" class="tool-btn" type="button" title="Open STL file (O)">
-          <span class="key-hint">O</span><span>Open</span>
-        </button>
-        <button id="btn-matcap" class="tool-btn" type="button" title="Cycle MatCap shader (M)">
-          <span class="key-hint">M</span><span id="lbl-matcap">Clay</span>
-        </button>
-        <button id="btn-wire" class="tool-btn" type="button" aria-pressed="false" title="Toggle Wireframe overlay (W)">
-          <span class="key-hint">W</span><span>Wire</span>
-        </button>
-        <button id="btn-slice" class="tool-btn" type="button" aria-pressed="false" title="Toggle Cross-section Slice (S)">
-          <span class="key-hint">S</span><span>Slice</span>
-        </button>
-        <button id="btn-measure" class="tool-btn" type="button" aria-pressed="false" title="3D Point-to-Point Measure (D)">
-          <span class="key-hint">D</span><span>Meas</span>
-        </button>
-        <button id="btn-xray" class="tool-btn" type="button" aria-pressed="false" title="Toggle X-Ray Fresnel (X)">
-          <span class="key-hint">X</span><span>XRay</span>
-        </button>
-        <button id="btn-twosided" class="tool-btn" type="button" aria-pressed="false" title="Toggle Two-Sided faces (B)">
-          <span class="key-hint">B</span><span>2Side</span>
-        </button>
-        <button id="btn-theme" class="tool-btn" type="button" title="Toggle Dark / Light theme (T)">
-          <span class="key-hint">T</span><span id="lbl-theme">Dark</span>
-        </button>
-        <button id="btn-reset" class="tool-btn" type="button" title="Reset camera & fit model (R / F)">
-          <span class="key-hint">R</span><span>Reset</span>
-        </button>
-        <button id="btn-help" class="tool-btn icon-only" type="button" aria-pressed="false" title="Shortcuts & Engine Info (?, F1)" aria-label="Help">
-          <span>?</span>
-        </button>
+      <div class="toolbar-shell">
+        <div id="toolbar-pill" class="glass-pill toolbar-pill" role="toolbar" aria-label="Araç Çubuğu">
+          <button id="btn-open" class="tool-btn tool-primary" type="button" title="STL veya ZIP Aç (O)">
+            <span class="key-hint">O</span><span data-i18n="open">Aç</span>
+          </button>
+          <button id="btn-matcap" class="tool-btn" type="button" title="Stüdyo Materyali Değiştir (M)">
+            <span class="key-hint">M</span><span id="lbl-matcap">Clay</span>
+          </button>
+          <button id="btn-wire" class="tool-btn" type="button" aria-pressed="false" title="Tel Kafes (W)">
+            <span class="key-hint">W</span><span data-i18n="wire">Tel</span>
+          </button>
+          <button id="btn-slice" class="tool-btn" type="button" aria-pressed="false" title="Kesit Düzlemi (S)">
+            <span class="key-hint">S</span><span data-i18n="slice">Kesit</span>
+          </button>
+          <button id="btn-measure" class="tool-btn" type="button" aria-pressed="false" title="3D Noktadan Noktaya Ölçüm (D)">
+            <span class="key-hint">D</span><span data-i18n="measure">Ölç</span>
+          </button>
+          <button id="btn-overhang" class="tool-btn" type="button" aria-pressed="false" title="45° Sarkma / Destek Analizi (A)">
+            <span class="key-hint">A</span><span data-i18n="overhang">Destek</span>
+          </button>
+          <button id="btn-xray" class="tool-btn" type="button" aria-pressed="false" title="X-Ray Fresnel (X)">
+            <span class="key-hint">X</span><span data-i18n="xray">X-Ray</span>
+          </button>
+          <button id="btn-twosided" class="tool-btn" type="button" aria-pressed="false" title="Çift Taraflı Yüzeyler (B)">
+            <span class="key-hint">B</span><span data-i18n="twoSided">Çift Yüz</span>
+          </button>
+          <button id="btn-theme" class="tool-btn" type="button" title="Koyu / Açık Tema (T)">
+            <span class="key-hint">T</span><span id="lbl-theme">Koyu</span>
+          </button>
+          <button id="btn-reset" class="tool-btn" type="button" title="Kamerayı Sıfırla ve Sığdır (R / F)">
+            <span class="key-hint">R</span><span data-i18n="reset">Sıfırla</span>
+          </button>
+          <button id="btn-help" class="tool-btn icon-only" type="button" aria-pressed="false" title="Kısayollar ve Motor Bilgisi (?, F1)" aria-label="Yardım">
+            <span>?</span>
+          </button>
+        </div>
       </div>
-    </div>
+    </nav>
 
-    <!-- Bottom-right: 3D Axis Triad Labels + CAD View Popover Trigger -->
-    <button id="triad-btn" class="triad-hitbox" type="button" aria-haspopup="true" aria-expanded="false" title="CAD Views & Camera Options">
+    <!-- Bottom-right: Dynamic 3D Axis Triad Hitbox & CAD View Popover -->
+    <button id="triad-btn" class="triad-hitbox" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="view-popover" title="CAD Görünümleri ve Kamera Seçenekleri">
       <span id="axis-lbl-x" class="axis-lbl axis-x">X</span>
       <span id="axis-lbl-y" class="axis-lbl axis-y">Y</span>
       <span id="axis-lbl-z" class="axis-lbl axis-z">Z</span>
     </button>
 
-    <div id="view-popover" class="glass-popover view-popover hidden" role="menu" aria-label="Camera Views">
-      <div class="pop-section-label">CAD Views</div>
+    <div id="view-popover" class="glass-popover view-popover hidden" role="menu" aria-label="Kamera Görünümleri">
+      <div class="pop-section-label" data-i18n="cadViews">CAD Görünümleri</div>
       <div class="view-grid">
-        <button class="pop-item" type="button" data-view="iso">Iso <kbd>0</kbd></button>
-        <button class="pop-item" type="button" data-view="front">Front <kbd>1</kbd></button>
-        <button class="pop-item" type="button" data-view="back">Back <kbd>2</kbd></button>
-        <button class="pop-item" type="button" data-view="right">Right <kbd>3</kbd></button>
-        <button class="pop-item" type="button" data-view="left">Left <kbd>4</kbd></button>
-        <button class="pop-item" type="button" data-view="top">Top <kbd>5</kbd></button>
-        <button class="pop-item" type="button" data-view="bottom">Bottom <kbd>6</kbd></button>
+        <button class="pop-item" type="button" data-view="iso"><span data-i18n="viewIso">İzometrik</span> <kbd>0</kbd></button>
+        <button class="pop-item" type="button" data-view="front"><span data-i18n="viewFront">Ön</span> <kbd>1</kbd></button>
+        <button class="pop-item" type="button" data-view="back"><span data-i18n="viewBack">Arka</span> <kbd>2</kbd></button>
+        <button class="pop-item" type="button" data-view="right"><span data-i18n="viewRight">Sağ</span> <kbd>3</kbd></button>
+        <button class="pop-item" type="button" data-view="left"><span data-i18n="viewLeft">Sol</span> <kbd>4</kbd></button>
+        <button class="pop-item" type="button" data-view="top"><span data-i18n="viewTop">Üst</span> <kbd>5</kbd></button>
+        <button class="pop-item" type="button" data-view="bottom"><span data-i18n="viewBottom">Alt</span> <kbd>6</kbd></button>
       </div>
       <div class="pop-divider"></div>
-      <button id="btn-ortho" class="pop-item" type="button" aria-pressed="false">Orthographic <kbd>P</kbd></button>
-      <button id="btn-yup" class="pop-item" type="button" aria-pressed="false">Y-Up Axis <kbd>U</kbd></button>
-      <button id="btn-grid" class="pop-item active" type="button" aria-pressed="true">Ground Grid <kbd>G</kbd></button>
-      <button id="btn-hide-hud" class="pop-item" type="button">Hide HUD <kbd>H</kbd></button>
+      <button id="btn-ortho" class="pop-item" type="button" aria-pressed="false"><span data-i18n="ortho">Ortografik</span> <kbd>P</kbd></button>
+      <button id="btn-yup" class="pop-item" type="button" aria-pressed="false"><span data-i18n="yup">Y-Yukarı Ekseni</span> <kbd>U</kbd></button>
+      <button id="btn-grid" class="pop-item active" type="button" aria-pressed="true"><span data-i18n="grid">Zemin Izgarası</span> <kbd>G</kbd></button>
+      <button id="btn-hide-hud" class="pop-item" type="button"><span data-i18n="hideHud">Arayüzü Gizle</span> <kbd>H</kbd></button>
     </div>
   </div>
 
   <!-- Minimal Restore HUD Pill when HUD is hidden -->
-  <button id="btn-restore-hud" class="glass-pill restore-hud hidden" type="button" title="Show HUD (H)">Show HUD (H)</button>
+  <button id="btn-restore-hud" class="glass-pill restore-hud hidden" type="button" data-i18n="showHud">Arayüzü Göster (H)</button>
 
-  <!-- Help & Diagnostics Modal -->
-  <div id="help-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
-    <div class="glass-popover help-card">
+  <!-- Instant Access & Share Modal (QR + Short Links + Model Handoff) -->
+  <div id="share-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="share-title">
+    <div class="glass-popover modal-card share-card">
       <div class="help-header">
         <div class="help-title-wrap">
           <img src="./favicon.svg" alt="" width="20" height="20" />
-          <h2 id="help-title">faset WebGL2 — Controls &amp; Architecture</h2>
+          <h2 id="share-title" data-i18n="shareTitle">Anında Erişim &amp; Paylaşım</h2>
         </div>
-        <button id="btn-help-close" class="chip-btn" type="button" aria-label="Close help">Close</button>
+        <button id="btn-share-close" class="chip-btn" type="button" data-i18n="close">Kapat</button>
+      </div>
+
+      <div class="share-mode-row">
+        <div class="seg-group" role="tablist" aria-label="Paylaşım Sekmeleri">
+          <button id="tab-share-access" class="seg-btn active" type="button" role="tab" aria-selected="true" data-i18n="shareTabAccess">Cihazdan Aç (QR)</button>
+          <button id="tab-share-model" class="seg-btn" type="button" role="tab" aria-selected="false" data-i18n="shareTabModel">Bu Modeli Paylaş</button>
+        </div>
+        <span id="server-mode-badge" class="mode-badge mono">…</span>
+      </div>
+
+      <!-- Tab 1: Device Access QR -->
+      <div id="panel-share-access" class="share-panel">
+        <div id="access-url-chips" class="access-chips"></div>
+        <div class="qr-stage">
+          <div id="access-qr-box" class="qr-box"></div>
+          <div class="qr-meta">
+            <label for="access-url-input" class="insp-label" data-i18n="shareChooseUrl">Erişim Adresi</label>
+            <input id="access-url-input" class="text-input mono" type="text" readonly value="" />
+            <div class="share-actions-row">
+              <button id="btn-copy-access" class="chip-btn chip-accent" type="button" data-i18n="copy">Kopyala</button>
+              <a id="link-open-access" class="chip-btn link-btn" href="#" target="_blank" rel="noopener noreferrer">↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Share Active Model -->
+      <div id="panel-share-model" class="share-panel hidden">
+        <p id="share-model-desc" class="modal-desc"></p>
+        <div class="share-actions-row">
+          <button id="btn-generate-share" class="chip-btn chip-accent" type="button" data-i18n="shareCreateBtn">Model Bağlantısı &amp; QR Üret</button>
+          <button id="btn-download-stl-share" class="chip-btn" type="button" data-i18n="downloadStl">STL İndir</button>
+        </div>
+        <div id="model-share-result" class="qr-stage hidden">
+          <div id="model-qr-box" class="qr-box"></div>
+          <div class="qr-meta">
+            <input id="model-share-input" class="text-input mono" type="text" readonly value="" aria-label="Paylaşım bağlantısı" />
+            <div class="share-actions-row">
+              <button id="btn-copy-model-share" class="chip-btn chip-accent" type="button" data-i18n="shareCopyLink">Bağlantıyı Kopyala</button>
+              <a id="link-open-model-share" class="chip-btn link-btn" href="#" target="_blank" rel="noopener noreferrer">↗</a>
+            </div>
+            <span id="model-share-note" class="share-note"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load from URL Modal -->
+  <div id="url-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="url-modal-title">
+    <div class="glass-popover modal-card url-card">
+      <div class="help-header">
+        <h2 id="url-modal-title" data-i18n="shareOpenUrlTitle">URL’den STL Yükle</h2>
+        <button id="btn-url-close" class="chip-btn" type="button" data-i18n="close">Kapat</button>
+      </div>
+      <form id="url-load-form" class="copy-row">
+        <input id="url-load-input" class="text-input mono" type="url" required placeholder="https://…/parca.stl" aria-label="STL URL" />
+        <button id="btn-url-submit" class="chip-btn chip-accent" type="submit" data-i18n="shareOpenUrlBtn">Yükle</button>
+      </form>
+      <p class="modal-desc" data-i18n="shareUrlHint">İpucu: Sayfadayken herhangi bir .stl bağlantısını Ctrl+V ile yapıştırabilirsiniz.</p>
+    </div>
+  </div>
+
+  <!-- Help & Diagnostics Modal -->
+  <div id="help-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="glass-popover modal-card help-card">
+      <div class="help-header">
+        <div class="help-title-wrap">
+          <img src="./favicon.svg" alt="" width="20" height="20" />
+          <h2 id="help-title" data-i18n="helpTitle">STLViewer Web — Kısayollar ve Motor</h2>
+        </div>
+        <button id="btn-help-close" class="chip-btn" type="button" data-i18n="close">Kapat</button>
       </div>
       <div class="help-cols">
         <div class="help-col">
-          <h3>Navigation</h3>
+          <h3 data-i18n="helpNav">Gezinme</h3>
           <dl class="kbd-list">
-            <div><dt>Left / 1-Finger</dt><dd>Orbit</dd></div>
-            <div><dt>Shift+Left / Right / Mid</dt><dd>Pan</dd></div>
-            <div><dt>Scroll / Pinch</dt><dd>Cursor Zoom</dd></div>
-            <div><dt>Double-Click / Tap</dt><dd>Set Pivot / Reset</dd></div>
-            <div><dt>1–6 / 0</dt><dd>CAD / Iso Views</dd></div>
-            <div><dt>P / U / G</dt><dd>Ortho / Y-Up / Grid</dd></div>
+            <div><dt>Left / 1-Finger</dt><dd data-i18n="helpOrbit">Döndür (Orbit)</dd></div>
+            <div><dt>Shift+Drag / Right / Mid</dt><dd data-i18n="helpPan">Kaydır (Pan)</dd></div>
+            <div><dt>Wheel / Pinch / + -</dt><dd data-i18n="helpZoom">İmlece Yakınlaştır</dd></div>
+            <div><dt>Double-Click / Tap</dt><dd data-i18n="helpPivot">Odak Ayarla / Sıfırla</dd></div>
+            <div><dt>1–6 / 0</dt><dd data-i18n="helpCadViews">CAD / İzometrik</dd></div>
+            <div><dt>P / U / G / V</dt><dd data-i18n="helpCameraModes">Orto / Y-Up / Izgara / Döndür</dd></div>
           </dl>
         </div>
         <div class="help-col">
-          <h3>Inspection &amp; Power</h3>
+          <h3 data-i18n="helpTools">İnceleme ve Güç</h3>
           <dl class="kbd-list">
-            <div><dt>M</dt><dd>Cycle Studio MatCap</dd></div>
-            <div><dt>W / X / B</dt><dd>Wire / XRay / 2-Side</dd></div>
-            <div><dt>S / Tab / I</dt><dd>Slice / Axis / Flip</dd></div>
-            <div><dt>D / Esc</dt><dd>Measure / Cancel</dd></div>
-            <div><dt>O / [ ]</dt><dd>Open / Prev-Next STL</dd></div>
-            <div><dt>E / T / H</dt><dd>Eco / Theme / Hide HUD</dd></div>
+            <div><dt>O / L / Ctrl+V</dt><dd data-i18n="helpOpenFiles">Dosya / URL / Yapıştır</dd></div>
+            <div><dt>M / W / X / A</dt><dd data-i18n="helpShading">MatCap / Tel / X-Ray / Destek</dd></div>
+            <div><dt>S / Tab / I</dt><dd data-i18n="helpSliceKeys">Kesit / Eksen / Çevir</dd></div>
+            <div><dt>D / N / K</dt><dd data-i18n="helpPanels">Ölç / İncele / Paylaş QR</dd></div>
+            <div><dt>C / [ ]</dt><dd data-i18n="helpExportCycle">PNG Kaydet / Önceki-Sonraki</dd></div>
+            <div><dt>E / T / H</dt><dd data-i18n="helpPowerTheme">Eco / Tema / Arayüz Gizle</dd></div>
           </dl>
         </div>
       </div>
       <div class="help-footer">
         <span id="engine-diag" class="mono">8 B/v UNORM16 · 0% Idle CPU/GPU</span>
-        <a href="https://github.com/meucak/faset" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/meucak/stlviewer-web" target="_blank" rel="noopener noreferrer">GitHub</a>
       </div>
     </div>
   </div>
@@ -177,20 +388,21 @@
   <!-- Drag & Drop Overlay -->
   <div id="drop-overlay" class="drop-overlay hidden" aria-hidden="true">
     <div class="glass-popover drop-card">
-      <strong>Drop .stl file(s) to inspect</strong>
-      <span>Binary &amp; ASCII STL · Parsed off-thread · 8 bytes/vertex UNORM16</span>
+      <strong data-i18n="dropTitle">İncelemek için .stl veya .zip bırakın</strong>
+      <span data-i18n="dropSub">Binary &amp; ASCII STL · Çoklu dosya ve ZIP destekli · Tarayıcı içinde işlenir</span>
     </div>
   </div>
 
   <!-- Renderer Error Fallback -->
   <div id="error-banner" class="modal-backdrop hidden" role="alert">
-    <div class="glass-popover help-card">
+    <div class="glass-popover modal-card help-card">
       <h2>Renderer Unavailable</h2>
-      <p id="error-msg">Your browser or graphics driver could not initialize a 3D or 2D canvas renderer.</p>
+      <p id="error-msg">Tarayıcınız 3D veya 2D görüntüleyiciyi başlatamadı.</p>
     </div>
   </div>
 
-  <input id="file-input" type="file" accept=".stl,.STL" multiple hidden />
+  <!-- Mobile-safe file accept list (.stl + .zip + MIME types so Android/iOS never grey out STL files) -->
+  <input id="file-input" type="file" accept=".stl,.STL,.zip,.ZIP,model/stl,application/sla,application/vnd.ms-pki.stl,application/zip,application/octet-stream" multiple hidden />
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>

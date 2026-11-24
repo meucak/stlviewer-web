@@ -1,16 +1,45 @@
 services:
-  faset-web:
-    image: nginx:alpine
-    container_name: faset-web
+  stlviewer-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stlviewer-web
     restart: unless-stopped
     ports:
-      - "8096:80"
+      - "8097:8097"
+    mem_limit: 128m
+    cpus: 0.75
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    environment:
+      - PORT=8097
+      - NODE_ENV=production
+      - DOCS_DIR=/app/docs
+      - DATA_DIR=/app/server_data
+      - TUNNEL_LOG_PATH=/app/server_data/logs/cloudflared.log
+      - LIBRARY_DIRS=SolidCraft=/library/solidcraft,KasaDepo=/library/depo
+      - GITHUB_PAGES_URL=https://meucak.github.io/stlviewer-web/
+      - LAN_IP=192.168.1.100
+      - TAILSCALE_IP=100.69.155.110
     volumes:
-      - ./docs:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    mem_limit: 32m
+      - ./docs:/app/docs:ro
+      - ./server:/app/server:ro
+      - ./server_data:/app/server_data
+      - /home/kasa/apps/solidcraft-kasa/workspace:/library/solidcraft:ro
+      - /home/kasa/Depo:/library/depo:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
-      interval: 30s
-      timeout: 3s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8097/api/health || exit 1"]
+      interval: 20s
+      timeout: 4s
       retries: 3
+
+  stlviewer-web-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: stlviewer-web-tunnel
+    restart: unless-stopped
+    user: "0:0"
+    network_mode: "service:stlviewer-web"
+    command: tunnel --no-autoupdate --url http://127.0.0.1:8097 --logfile /var/log/cloudflared.log
+    volumes:
+      - ./server_data/logs:/var/log

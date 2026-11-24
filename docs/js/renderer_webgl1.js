@@ -16,6 +16,7 @@ void main() {
 function makeBgFs(prec) {
   return `
 precision ${prec} float;
+precision mediump int;
 varying vec2 vUV;
 uniform int uDark;
 void main() {
@@ -24,21 +25,25 @@ void main() {
   float vig = dot(d, d) * 0.35;
   vec3 col;
   if (uDark != 0) {
-    vec3 bot = vec3(0.011, 0.014, 0.019);
-    vec3 top = vec3(0.027, 0.033, 0.045);
-    col = mix(bot, top, smoothstep(0.0, 1.0, t)) * (1.0 - vig * 0.45);
+    // sRGB-matched to WebGL2 resolve output (Obsidian Studio)
+    vec3 bot = vec3(0.086, 0.102, 0.133);
+    vec3 top = vec3(0.157, 0.180, 0.224);
+    col = mix(bot, top, smoothstep(0.0, 1.0, t)) * (1.0 - vig * 0.32);
   } else {
-    vec3 bot = vec3(0.58, 0.62, 0.68);
-    vec3 top = vec3(0.84, 0.87, 0.91);
-    col = mix(bot, top, smoothstep(0.0, 1.0, t)) * (1.0 - vig * 0.12);
+    // sRGB-matched to WebGL2 resolve output (Alabaster Drafting)
+    vec3 bot = vec3(0.75, 0.79, 0.84);
+    vec3 top = vec3(0.92, 0.94, 0.96);
+    col = mix(bot, top, smoothstep(0.0, 1.0, t)) * (1.0 - vig * 0.08);
   }
   gl_FragColor = vec4(col, 1.0);
 }
 `;
 }
 
-function makeMeshVs(hasDeriv) {
+function makeMeshVs(prec, hasDeriv) {
   return `
+precision ${prec} float;
+precision mediump int;
 attribute vec4 aPos;
 ${hasDeriv ? 'attribute vec3 aBary;' : 'attribute vec3 aNorm;'}
 
@@ -50,15 +55,17 @@ uniform vec4 uClipPlane;
 uniform int uClipOn;
 
 varying vec3 vViewPos;
-${hasDeriv ? 'varying vec3 vBary;' : 'varying vec3 vViewNorm;'}
+varying vec3 vWorldPos;
+${hasDeriv ? 'varying vec3 vBary;' : 'varying vec3 vViewNorm;\nvarying vec3 vWorldNorm;'}
 varying float vClipDist;
 
 void main() {
   vec3 worldPos = uBboxMin + aPos.xyz * uQuantScale;
+  vWorldPos = worldPos;
   vec4 vp = uView * vec4(worldPos, 1.0);
   vViewPos = vp.xyz;
   vClipDist = (uClipOn != 0) ? dot(vec4(worldPos, 1.0), uClipPlane) : 1.0;
-  ${hasDeriv ? 'vBary = aBary;' : 'vViewNorm = (uView * vec4(aNorm, 0.0)).xyz;'}
+  ${hasDeriv ? 'vBary = aBary;' : 'vViewNorm = (uView * vec4(aNorm, 0.0)).xyz;\nvWorldNorm = aNorm;'}
   gl_Position = uProj * vp;
 }
 `;
@@ -67,8 +74,10 @@ void main() {
 function makeMeshFs(prec, hasDeriv) {
   const ext = hasDeriv ? '#extension GL_OES_standard_derivatives : enable\n' : '';
   return `${ext}precision ${prec} float;
+precision mediump int;
 varying vec3 vViewPos;
-${hasDeriv ? 'varying vec3 vBary;' : 'varying vec3 vViewNorm;'}
+varying vec3 vWorldPos;
+${hasDeriv ? 'varying vec3 vBary;' : 'varying vec3 vViewNorm;\nvarying vec3 vWorldNorm;'}
 varying float vClipDist;
 
 uniform sampler2D uMatcap;
@@ -76,6 +85,8 @@ uniform int uClipOn;
 uniform int uXray;
 uniform int uWire;
 uniform int uDark;
+uniform int uOverhang;
+uniform int uYUp;
 
 void main() {
   if (uClipOn != 0 && vClipDist < 0.0) discard;
@@ -108,11 +119,29 @@ void main() {
     col = base * (0.28 + 1.35 * rim);
     alpha = clamp(0.14 + 0.72 * rim, 0.14, 0.88);
   } else {
-    vec2 uv = N.xy * 0.492 + 0.5;
+    vec2 uv = vec2(N.x * 0.492 + 0.5, 0.5 - N.y * 0.492);
     col = texture2D(uMatcap, uv).rgb;
     if (backFace) {
       vec3 backTint = vec3(0.55, 0.22, 0.14);
       col = mix(col * 0.75, backTint * (0.45 + 0.65 * clamp(N.z, 0.0, 1.0)), 0.68);
+    } else if (uOverhang != 0) {
+      ${
+        hasDeriv
+          ? `vec3 wn = cross(dFdx(vWorldPos), dFdy(vWorldPos));
+      float wl2 = dot(wn, wn);
+      if (wl2 > 1e-20) {
+        wn *= inversesqrt(wl2);`
+          : `vec3 wn = vWorldNorm;
+      float wl2 = dot(wn, wn);
+      if (wl2 > 1e-12) {
+        wn *= inversesqrt(wl2);`
+      }
+        float upDot = (uYUp != 0) ? wn.y : wn.z;
+        if (upDot < -0.70710678) {
+          vec3 coral = vec3(0.95, 0.30, 0.22) * (0.45 + 0.55 * clamp(N.z, 0.0, 1.0));
+          col = mix(col * 0.30, coral, 0.82);
+        }
+      }
     }
   }
 
@@ -259,7 +288,7 @@ export class RendererWebGL1 {
     this.aBgPos = gl.getAttribLocation(this.bgProg, 'aPos');
     this.uBgDark = gl.getUniformLocation(this.bgProg, 'uDark');
 
-    this.meshProg = compileProgram(gl, makeMeshVs(this.hasDeriv), makeMeshFs(prec, this.hasDeriv), 'mesh');
+    this.meshProg = compileProgram(gl, makeMeshVs(prec, this.hasDeriv), makeMeshFs(prec, this.hasDeriv), 'mesh');
     this.aMeshPos = gl.getAttribLocation(this.meshProg, 'aPos');
     this.aMeshExtra = gl.getAttribLocation(this.meshProg, this.hasDeriv ? 'aBary' : 'aNorm');
     this.uMeshView = gl.getUniformLocation(this.meshProg, 'uView');
@@ -272,6 +301,8 @@ export class RendererWebGL1 {
     this.uMeshXray = gl.getUniformLocation(this.meshProg, 'uXray');
     this.uMeshWire = gl.getUniformLocation(this.meshProg, 'uWire');
     this.uMeshDark = gl.getUniformLocation(this.meshProg, 'uDark');
+    this.uMeshOverhang = gl.getUniformLocation(this.meshProg, 'uOverhang');
+    this.uMeshYUp = gl.getUniformLocation(this.meshProg, 'uYUp');
 
     this.lineProg = compileProgram(gl, LINE_VS, makeLineFs(prec), 'line');
     this.aLinePos = gl.getAttribLocation(this.lineProg, 'aPos');
@@ -520,6 +551,8 @@ export class RendererWebGL1 {
       gl.uniform1i(this.uMeshClipOn, state.sliceEnabled ? 1 : 0);
       gl.uniform1i(this.uMeshDark, state.darkTheme ? 1 : 0);
       gl.uniform1i(this.uMeshWire, state.wireframe && this.hasDeriv ? 1 : 0);
+      gl.uniform1i(this.uMeshOverhang, state.overhang ? 1 : 0);
+      gl.uniform1i(this.uMeshYUp, cam.getUpAxis() === UpAxis.YUp ? 1 : 0);
 
       const mc = Math.max(0, Math.min(MatcapKind.Count - 1, state.matcap | 0));
       gl.activeTexture(gl.TEXTURE0);
@@ -646,6 +679,43 @@ export class RendererWebGL1 {
       gl.depthMask(true);
     }
 
+    if (state.showBed && state.bedSize) {
+      const gc = modelValid
+        ? {
+            x: (mesh.bboxMin.x + mesh.bboxMax.x) * 0.5,
+            y: (mesh.bboxMin.y + mesh.bboxMax.y) * 0.5,
+            z: (mesh.bboxMin.z + mesh.bboxMax.z) * 0.5,
+          }
+        : { x: 0, y: 0, z: 0 };
+      const mr = modelValid
+        ? Math.max(Math.hypot(mesh.bboxExtent.x, mesh.bboxExtent.y, mesh.bboxExtent.z) * 0.5, 1.0)
+        : 50.0;
+      const bx = (state.bedSize.x || 220) * 0.5;
+      const by = (state.bedSize.y || 220) * 0.5;
+      const c = state.darkTheme ? [0.31, 0.61, 0.98, 0.85] : [0.15, 0.39, 0.92, 0.85];
+      const bv = [];
+      const seg = (a, b) => bv.push(a[0], a[1], a[2], ...c, b[0], b[1], b[2], ...c);
+      if (cam.getUpAxis() === UpAxis.ZUp) {
+        const gz = modelValid ? mesh.bboxMin.z - mr * 0.0004 : 0.0;
+        seg([gc.x - bx, gc.y - by, gz], [gc.x + bx, gc.y - by, gz]);
+        seg([gc.x + bx, gc.y - by, gz], [gc.x + bx, gc.y + by, gz]);
+        seg([gc.x + bx, gc.y + by, gz], [gc.x - bx, gc.y + by, gz]);
+        seg([gc.x - bx, gc.y + by, gz], [gc.x - bx, gc.y - by, gz]);
+      } else {
+        const gy = modelValid ? mesh.bboxMin.y - mr * 0.0004 : 0.0;
+        seg([gc.x - bx, gy, gc.z - by], [gc.x + bx, gy, gc.z - by]);
+        seg([gc.x + bx, gy, gc.z - by], [gc.x + bx, gy, gc.z + by]);
+        seg([gc.x + bx, gy, gc.z + by], [gc.x - bx, gy, gc.z + by]);
+        seg([gc.x - bx, gy, gc.z + by], [gc.x - bx, gy, gc.z - by]);
+      }
+      gl.depthMask(false);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      this._drawLines(bv, (bv.length / 7) | 0, vp);
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
+    }
+
     // 3. Measurement pins & line
     if (state.measureHasA) {
       const mv = [];
@@ -680,10 +750,10 @@ export class RendererWebGL1 {
       const v = view;
       const cssW = this.width / this.dpr;
       const cssH = this.height / this.dpr;
-      const cxCss = cssW - 54.0;
-      const cyCss = cssH - 54.0;
-      const armCss = 24.0;
-      const labelArmCss = 35.0;
+      const cxCss = state.triadCenterCss ? state.triadCenterCss.x : cssW - 54.0;
+      const cyCss = state.triadCenterCss ? state.triadCenterCss.y : cssH - 54.0;
+      const armCss = 22.0;
+      const labelArmCss = 33.0;
 
       const dirs = [
         [v[0], v[1], v[2]],

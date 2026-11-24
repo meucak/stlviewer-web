@@ -23,12 +23,16 @@ function createPass1Stats() {
     maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity,
     volume6: 0.0,
     area2: 0.0,
+    degenerateTris: 0,
     hasValid: false,
   };
 }
 
 function accumulateTriStats(x0, y0, z0, x1, y1, z1, x2, y2, z2, st) {
-  if (!isFiniteTri(x0, y0, z0, x1, y1, z1, x2, y2, z2)) return;
+  if (!isFiniteTri(x0, y0, z0, x1, y1, z1, x2, y2, z2)) {
+    st.degenerateTris++;
+    return;
+  }
   st.hasValid = true;
   if (x0 < st.minX) st.minX = x0; if (x1 < st.minX) st.minX = x1; if (x2 < st.minX) st.minX = x2;
   if (y0 < st.minY) st.minY = y0; if (y1 < st.minY) st.minY = y1; if (y2 < st.minY) st.minY = y2;
@@ -48,7 +52,9 @@ function accumulateTriStats(x0, y0, z0, x1, y1, z1, x2, y2, z2, st) {
   const nx = e1y * e2z - e1z * e2y;
   const ny = e1z * e2x - e1x * e2z;
   const nz = e1x * e2y - e1y * e2x;
-  st.area2 += Math.sqrt(nx * nx + ny * ny + nz * nz);
+  const a2 = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (a2 <= 1e-12) st.degenerateTris++;
+  st.area2 += a2;
 }
 
 function finalizeChunksAndQuantize(triCount, readTriFn, st) {
@@ -219,12 +225,16 @@ function finalizeChunksAndQuantize(triCount, readTriFn, st) {
     };
   }
 
+  const signedVolumeMm3 = st.volume6 / 6.0;
   return {
     bboxMin,
     bboxMax,
     bboxExtent,
     quantScale,
-    volumeMm3: Math.abs(st.volume6) / 6.0,
+    signedVolumeMm3,
+    volumeMm3: Math.abs(signedVolumeMm3),
+    invertedWinding: signedVolumeMm3 < -1e-3,
+    degenerateTris: st.degenerateTris,
     areaMm2: st.area2 * 0.5,
     vertices,
     chunks,
@@ -431,6 +441,30 @@ function parseBinaryStl(dv, triCount) {
   return { ok: true, isBinary: true, triCount, ...packed };
 }
 
+function readBinaryHeaderText(bytes) {
+  let out = '';
+  const lim = Math.min(80, bytes.length);
+  for (let i = 0; i < lim; i++) {
+    const c = bytes[i];
+    if (c === 0) break;
+    if (c >= 32 && c <= 126) out += String.fromCharCode(c);
+  }
+  return out.trim();
+}
+
+function readAsciiSolidName(bytes) {
+  let p = 0;
+  while (p < bytes.length && isWs(bytes[p])) p++;
+  p += 5; // skip "solid"
+  while (p < bytes.length && (bytes[p] === 32 || bytes[p] === 9)) p++;
+  let out = '';
+  while (p < bytes.length && bytes[p] !== 10 && bytes[p] !== 13 && out.length < 80) {
+    const c = bytes[p++];
+    if (c >= 32 && c <= 126) out += String.fromCharCode(c);
+  }
+  return out.trim();
+}
+
 export function parseStlBuffer(arrayBuffer, fileName = 'model.stl') {
   const t0 = performance.now();
   if (!arrayBuffer || arrayBuffer.byteLength === 0) {
@@ -442,11 +476,21 @@ export function parseStlBuffer(arrayBuffer, fileName = 'model.stl') {
   const dv = new DataView(arrayBuffer);
 
   let result = null;
+  let headerText = '';
   if (fileBytes >= 84) {
     const triCount = dv.getUint32(80, true);
     const expectedBinBytes = 84 + triCount * 50;
-    if (fileBytes === expectedBinBytes) {
-      result = parseBinaryStl(dv, triCount);
+    const padDelta = fileBytes - expectedBinBytes;
+    if (triCount > 0 && padDelta >= 0 && padDelta <= 16) {
+      let onlyPadding = true;
+      for (let i = expectedBinBytes; i < fileBytes; i++) {
+        const b = bytes[i];
+        if (b !== 0 && !isWs(b)) { onlyPadding = false; break; }
+      }
+      if (onlyPadding) {
+        result = parseBinaryStl(dv, triCount);
+        headerText = readBinaryHeaderText(bytes);
+      }
     }
   }
 
@@ -461,6 +505,7 @@ export function parseStlBuffer(arrayBuffer, fileName = 'model.stl') {
       (bytes.length - p === 5 || isWs(bytes[p + 5]))
     ) {
       result = parseAsciiStl(bytes);
+      headerText = readAsciiSolidName(bytes);
     } else {
       result = { ok: false, error: 'Unrecognized or truncated STL file' };
     }
@@ -473,6 +518,7 @@ export function parseStlBuffer(arrayBuffer, fileName = 'model.stl') {
 
   return {
     ...result,
+    headerText,
     name: fileName,
     fileBytes,
     vramBytes: result.vertices.byteLength,

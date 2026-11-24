@@ -260,6 +260,34 @@ export class Camera {
   target() { return this.cur.target; }
   distance() { return this.cur.distance; }
 
+  getState() {
+    return {
+      yaw: this.cur.yaw,
+      pitch: this.cur.pitch,
+      distance: this.cur.distance,
+      target: { ...this.cur.target },
+      ortho: this.ortho,
+      upAxis: this.upAxis,
+    };
+  }
+
+  applyState(s) {
+    if (!s) return;
+    if (s.upAxis === UpAxis.YUp || s.upAxis === UpAxis.ZUp) {
+      this.upAxis = s.upAxis;
+    }
+    this.ortho = !!s.ortho;
+    if (Number.isFinite(s.yaw)) this.cur.yaw = s.yaw;
+    if (Number.isFinite(s.pitch)) this.cur.pitch = s.pitch;
+    if (Number.isFinite(s.distance)) this.cur.distance = s.distance;
+    if (s.target && Number.isFinite(s.target.x)) {
+      this.cur.target = { x: s.target.x, y: s.target.y, z: s.target.z };
+    }
+    this._clampState(this.cur);
+    this.dst = { ...this.cur, target: { ...this.cur.target } };
+    this.animActive = false;
+  }
+
   eye() {
     return vAdd(this.cur.target, vScale(this._dirFromAngles(this.cur.yaw, this.cur.pitch), this.cur.distance));
   }

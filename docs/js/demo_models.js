@@ -4,7 +4,7 @@ export const DEMO_MODELS = Object.freeze([
   { id: 'calibration-block', name: 'calibration-block.stl', label: 'Calibration Block' },
 ]);
 
-export function buildBinaryStl(triangles, headerLabel = 'faset procedural CAD') {
+export function buildBinaryStl(triangles, headerLabel = 'stlviewer procedural CAD') {
   const triCount = (triangles.length / 9) | 0;
   const buf = new ArrayBuffer(84 + triCount * 50);
   const bytes = new Uint8Array(buf);
@@ -75,23 +75,23 @@ function addWasherStack(out, segs, rings, cx = 0, cy = 0) {
         pushTri(
           out,
           cx, cy, zA,
-          cx + rB * c0, cy + rB * s0, zB,
-          cx + rB * c1, cy + rB * s1, zB
+          cx + rB * c1, cy + rB * s1, zB,
+          cx + rB * c0, cy + rB * s0, zB
         );
       } else if (rB < 1e-6 && rA >= 1e-6) {
         pushTri(
           out,
           cx + rA * c0, cy + rA * s0, zA,
-          cx, cy, zB,
-          cx + rA * c1, cy + rA * s1, zA
+          cx + rA * c1, cy + rA * s1, zA,
+          cx, cy, zB
         );
       } else if (rA >= 1e-6 && rB >= 1e-6) {
         pushQuad(
           out,
           cx + rA * c0, cy + rA * s0, zA,
-          cx + rB * c0, cy + rB * s0, zB,
+          cx + rA * c1, cy + rA * s1, zA,
           cx + rB * c1, cy + rB * s1, zB,
-          cx + rA * c1, cy + rA * s1, zA
+          cx + rB * c0, cy + rB * s0, zB
         );
       }
     }
@@ -158,10 +158,10 @@ function makeFlangeHousing() {
   ];
   addWasherStack(out, 64, profile, 0, 0);
 
-  // 6 machined bolt bosses / socket caps around R=34mm
+  // 6 machined bolt bosses / socket caps around R=34mm (embedded 0.25mm into flange to avoid coplanar Z-fighting on slice)
   const bossProfile = [
-    [2.8, 11.0],
-    [6.2, 11.0],
+    [2.8, 10.75],
+    [6.2, 10.75],
     [6.2, 14.2],
     [5.4, 15.0],
     [3.2, 15.0],
@@ -199,7 +199,7 @@ function makeFlangeHousing() {
     pushQuad(out, p11[0], p11[1], z0, p01[0], p01[1], z0, p01[0], p01[1], z1t, p11[0], p11[1], z1b);
   }
 
-  return buildBinaryStl(out, 'faset flange-housing.stl');
+  return buildBinaryStl(out, 'stlviewer flange-housing.stl');
 }
 
 function makeSpurGear() {
@@ -249,20 +249,21 @@ function makeSpurGear() {
   ];
   addWasherStack(out, 48, hubProfile, 0, 0);
 
-  return buildBinaryStl(out, 'faset spur-gear.stl');
+  return buildBinaryStl(out, 'stlviewer spur-gear.stl');
 }
 
 function makeCalibrationBlock() {
   const out = [];
   // Stepped metrology gauge block + chamfered top tower
+  // Slight 0.2mm overlap into supporting base avoids coplanar opposite-normal Z-fighting during cross-section slicing
   addBox(out, -30, -20, 0, 30, 20, 10);
-  addBox(out, -24, -14, 10, 8, 14, 22);
-  addBox(out, -20, -10, 22, 4, 10, 30);
+  addBox(out, -24, -14, 9.8, 8, 14, 22);
+  addBox(out, -20, -10, 21.8, 4, 10, 30);
 
   // Precision calibration cylinder with bore on right platform
   const cyl = [
-    [4.5, 10.0],
-    [10.0, 10.0],
+    [4.5, 9.8],
+    [10.0, 9.8],
     [10.0, 26.0],
     [8.8, 27.5],
     [5.5, 27.5],
@@ -270,7 +271,7 @@ function makeCalibrationBlock() {
   ];
   addWasherStack(out, 48, cyl, 18.0, 0.0);
 
-  return buildBinaryStl(out, 'faset calibration-block.stl');
+  return buildBinaryStl(out, 'stlviewer calibration-block.stl');
 }
 
 export function generateDemoStl(id) {

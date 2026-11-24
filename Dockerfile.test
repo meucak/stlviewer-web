@@ -1,0 +1,24 @@
+FROM node:22-alpine
+
+RUN apk add --no-cache \
+    chromium \
+    mesa-dri-gallium \
+    mesa-gl \
+    mesa-gles \
+    mesa-egl \
+    mesa-vulkan-swrast \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    font-noto
+
+WORKDIR /e2e
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser
+
+RUN npm init -y >/dev/null 2>&1 \
+    && npm install --no-audit --no-fund playwright-core axe-core
+
+CMD ["node", "/app/tests/e2e/run_e2e.mjs"]

@@ -1,0 +1,60 @@
+{
+  "name": "STLViewer Web — Instant 3D STL Inspector",
+  "short_name": "STLViewer",
+  "description": "Anında erişilebilir, sıfır bağımlılıklı, çevrimdışı çalışan 3D STL görüntüleyici ve baskı analiz stüdyosu.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#0F1218",
+  "theme_color": "#0F1218",
+  "orientation": "any",
+  "categories": ["utilities", "productivity", "graphics"],
+  "icons": [
+    {
+      "src": "./icons/stlviewer.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "model/stl": [".stl"],
+        "application/sla": [".stl"],
+        "application/vnd.ms-pki.stl": [".stl"],
+        "application/zip": [".zip"]
+      }
+    }
+  ],
+  "share_target": {
+    "action": "./?shared_target=1",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "stl_file",
+          "accept": [".stl", ".STL", ".zip", "model/stl", "application/sla", "application/octet-stream"]
+        }
+      ]
+    }
+  }
+}

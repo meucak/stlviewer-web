@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=STLViewer Web
+Comment=Instant 3D STL Inspector (LAN / Tailscale / Global Web)
+Exec=sh -c 'xdg-open "http://stl" 2>/dev/null || xdg-open "https://meucak.github.io/stlviewer-web/"'
+Icon=stlviewer
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+Keywords=stl;3d;cad;viewer;mesh;web;

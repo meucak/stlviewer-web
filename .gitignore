@@ -1,6 +1,5 @@
 build/
 *.o
-*.a
 *.ppm
-*.png
-.cache/
+server_data/
+.DS_Store

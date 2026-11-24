@@ -49,11 +49,13 @@ uniform vec4 uClipPlane;
 uniform int uClipOn;
 
 out vec3 vViewPos;
+out vec3 vWorldPos;
 out vec3 vBary;
 out float vClipDist;
 
 void main() {
   vec3 worldPos = uBboxMin + aPos.xyz * uQuantScale;
+  vWorldPos = worldPos;
   vec4 vp = uView * vec4(worldPos, 1.0);
   vViewPos = vp.xyz;
   vClipDist = (uClipOn != 0) ? dot(vec4(worldPos, 1.0), uClipPlane) : 1.0;
@@ -67,6 +69,7 @@ const MESH_FS = `#version 300 es
 precision highp float;
 precision highp int;
 in vec3 vViewPos;
+in vec3 vWorldPos;
 in vec3 vBary;
 in float vClipDist;
 
@@ -75,6 +78,8 @@ uniform int uClipOn;
 uniform int uXray;
 uniform int uWire;
 uniform int uDark;
+uniform int uOverhang;
+uniform int uYUp;
 
 out vec4 FragColor;
 
@@ -104,11 +109,22 @@ void main() {
     col = base * (0.28 + 1.35 * rim);
     alpha = clamp(0.14 + 0.72 * rim, 0.14, 0.88);
   } else {
-    vec2 uv = N.xy * 0.492 + 0.5;
+    vec2 uv = vec2(N.x * 0.492 + 0.5, 0.5 - N.y * 0.492);
     col = texture(uMatcap, uv).rgb;
     if (backFace) {
       vec3 backTint = vec3(0.55, 0.22, 0.14);
       col = mix(col * 0.75, backTint * (0.45 + 0.65 * clamp(N.z, 0.0, 1.0)), 0.68);
+    } else if (uOverhang != 0) {
+      vec3 wn = cross(dFdx(vWorldPos), dFdy(vWorldPos));
+      float wl2 = dot(wn, wn);
+      if (wl2 > 1e-20) {
+        wn *= inversesqrt(wl2);
+        float upDot = (uYUp != 0) ? wn.y : wn.z;
+        if (upDot < -0.70710678) {
+          vec3 coral = vec3(0.92, 0.14, 0.08) * (0.35 + 0.65 * clamp(N.z, 0.0, 1.0));
+          col = mix(col * 0.30, coral, 0.82);
+        }
+      }
     }
   }
 
@@ -344,6 +360,14 @@ export class Renderer {
     this.targetSamples = 16;
     this.hasMesh = false;
     this.glInfo = '';
+    this.lastCstats = {
+      totalChunks: 0,
+      frustumCulled: 0,
+      coneCulled: 0,
+      visibleChunks: 0,
+      visibleTris: 0,
+      drawCalls: 0,
+    };
 
     this.sceneFbo = null;
     this.sceneColor = null;
@@ -408,6 +432,8 @@ export class Renderer {
     this.uMeshXray = gl.getUniformLocation(this.meshProg, 'uXray');
     this.uMeshWire = gl.getUniformLocation(this.meshProg, 'uWire');
     this.uMeshDark = gl.getUniformLocation(this.meshProg, 'uDark');
+    this.uMeshOverhang = gl.getUniformLocation(this.meshProg, 'uOverhang');
+    this.uMeshYUp = gl.getUniformLocation(this.meshProg, 'uYUp');
 
     this.pickProg = compileProgram(gl, PICK_VS, PICK_FS, 'pick');
     this.uPickVP = gl.getUniformLocation(this.pickProg, 'uPickVP');
@@ -451,7 +477,7 @@ export class Renderer {
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 12);
-    gl.bindVertexArray(0);
+    gl.bindVertexArray(null);
 
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     for (let i = 0; i < MatcapKind.Count; i++) {
@@ -476,7 +502,7 @@ export class Renderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       this.matcapTex.push(tex);
     }
-    gl.bindTexture(gl.TEXTURE_2D, 0);
+    gl.bindTexture(gl.TEXTURE_2D, null);
 
     this._createFbos(this.width, this.height);
     this.accumCount = 0;
@@ -630,16 +656,17 @@ export class Renderer {
 
   renderFrame(mesh, cam, state) {
     const gl = this.gl;
-    let cstats = {
-      totalChunks: 0,
-      frustumCulled: 0,
-      coneCulled: 0,
-      visibleChunks: 0,
-      visibleTris: 0,
-      drawCalls: 0,
-    };
+    let cstats = this.lastCstats;
 
     if (this.accumCount < this.targetSamples) {
+      cstats = {
+        totalChunks: 0,
+        frustumCulled: 0,
+        coneCulled: 0,
+        visibleChunks: 0,
+        visibleTris: 0,
+        drawCalls: 0,
+      };
       const sampleIdx = this.accumCount;
       const { jx, jy } = subpixelJitterNdc(sampleIdx, this.width, this.height);
 
@@ -698,6 +725,8 @@ export class Renderer {
         gl.uniform1i(this.uMeshClipOn, state.sliceEnabled ? 1 : 0);
         gl.uniform1i(this.uMeshDark, state.darkTheme ? 1 : 0);
         gl.uniform1i(this.uMeshWire, state.wireframe ? 1 : 0);
+        gl.uniform1i(this.uMeshOverhang, state.overhang ? 1 : 0);
+        gl.uniform1i(this.uMeshYUp, cam.getUpAxis() === UpAxis.YUp ? 1 : 0);
 
         const mc = Math.max(0, Math.min(MatcapKind.Count - 1, state.matcap | 0));
         gl.activeTexture(gl.TEXTURE0);
@@ -789,12 +818,57 @@ export class Renderer {
         gl.depthMask(true);
       }
 
-      // 3D Measurement pins & line
+      // Optional 3D Printer Build Plate Outline
+      if (state.showBed && state.bedSize) {
+        const gc = modelValid
+          ? {
+              x: (mesh.bboxMin.x + mesh.bboxMax.x) * 0.5,
+              y: (mesh.bboxMin.y + mesh.bboxMax.y) * 0.5,
+              z: (mesh.bboxMin.z + mesh.bboxMax.z) * 0.5,
+            }
+          : { x: 0, y: 0, z: 0 };
+        const mr = modelValid
+          ? Math.max(Math.hypot(mesh.bboxExtent.x, mesh.bboxExtent.y, mesh.bboxExtent.z) * 0.5, 1.0)
+          : 50.0;
+        const bx = (state.bedSize.x || 220) * 0.5;
+        const by = (state.bedSize.y || 220) * 0.5;
+        const c = state.darkTheme ? [0.22, 0.56, 0.98, 0.85] : [0.08, 0.28, 0.80, 0.85];
+        const bv = [];
+        const seg = (a, b) => bv.push(a[0], a[1], a[2], ...c, b[0], b[1], b[2], ...c);
+        if (cam.getUpAxis() === UpAxis.ZUp) {
+          const gz = modelValid ? mesh.bboxMin.z - mr * 0.0004 : 0.0;
+          seg([gc.x - bx, gc.y - by, gz], [gc.x + bx, gc.y - by, gz]);
+          seg([gc.x + bx, gc.y - by, gz], [gc.x + bx, gc.y + by, gz]);
+          seg([gc.x + bx, gc.y + by, gz], [gc.x - bx, gc.y + by, gz]);
+          seg([gc.x - bx, gc.y + by, gz], [gc.x - bx, gc.y - by, gz]);
+        } else {
+          const gy = modelValid ? mesh.bboxMin.y - mr * 0.0004 : 0.0;
+          seg([gc.x - bx, gy, gc.z - by], [gc.x + bx, gy, gc.z - by]);
+          seg([gc.x + bx, gy, gc.z - by], [gc.x + bx, gy, gc.z + by]);
+          seg([gc.x + bx, gy, gc.z + by], [gc.x - bx, gy, gc.z + by]);
+          seg([gc.x - bx, gy, gc.z + by], [gc.x - bx, gy, gc.z - by]);
+        }
+        if (this.lineScratch.length < bv.length) this.lineScratch = new Float32Array(bv.length);
+        this.lineScratch.set(bv);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        gl.useProgram(this.lineProg);
+        gl.uniformMatrix4fv(this.uLineVP, false, vp);
+        gl.bindVertexArray(this.lineVao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.lineVbo);
+        gl.bufferData(gl.ARRAY_BUFFER, this.lineScratch.subarray(0, bv.length), gl.STREAM_DRAW);
+        gl.drawArrays(gl.LINES, 0, (bv.length / 7) | 0);
+        gl.disable(gl.BLEND);
+        gl.depthMask(true);
+      }
+
+      // 3D Measurement pins & line (high-contrast amber + sapphire/cyan)
       if (state.measureHasA) {
         const mv = [];
-        const rPin = Math.max(cam.distance() * 0.012, 0.1);
-        const pinCol = [0.98, 0.62, 0.15, 1.0];
-        const lineCol = [0.35, 0.78, 1.0, 1.0];
+        const rPin = Math.max(cam.distance() * 0.016, 0.15);
+        const pinCol = state.darkTheme ? [1.0, 0.68, 0.16, 1.0] : [0.88, 0.36, 0.04, 1.0];
+        const lineCol = state.darkTheme ? [0.24, 0.80, 1.0, 1.0] : [0.06, 0.32, 0.88, 1.0];
         appendDiamond3d(mv, state.measureA, rPin, pinCol);
         if (state.measureHasB) {
           appendDiamond3d(mv, state.measureB, rPin, pinCol);
@@ -834,6 +908,7 @@ export class Renderer {
       }
 
       // 2. Accumulate sceneColor -> accumFbo
+      this.lastCstats = cstats;
       this.accumCount++;
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo);
       gl.disable(gl.DEPTH_TEST);
@@ -876,10 +951,10 @@ export class Renderer {
       const v = cam.viewMatrix();
       const cssW = this.width / this.dpr;
       const cssH = this.height / this.dpr;
-      const cxCss = cssW - 54.0;
-      const cyCss = cssH - 54.0;
-      const armCss = 24.0;
-      const labelArmCss = 35.0;
+      const cxCss = state.triadCenterCss ? state.triadCenterCss.x : cssW - 54.0;
+      const cyCss = state.triadCenterCss ? state.triadCenterCss.y : cssH - 54.0;
+      const armCss = 22.0;
+      const labelArmCss = 33.0;
 
       const dirs = [
         [v[0], v[1], v[2]],
