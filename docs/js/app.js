@@ -999,6 +999,10 @@ async function generateModelShareLink() {
 }
 
 async function probeKasaBackend() {
+  if (window.location.hostname.endsWith('.github.io')) {
+    state.serverMode = false;
+    return;
+  }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 1600);
